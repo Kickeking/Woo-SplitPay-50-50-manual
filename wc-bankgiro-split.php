@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Woo SplitPay 50/50-manual
  * Description: Splits WooCommerce orders into a 50% deposit upon purchase and 50% final payment via manual bank transfer prior to delivery, with custom checkout and order confirmation instructions.
- * Version:     1.2.1
+ * Version:     1.2.2
  * Author:      Area 404
  * Text Domain: wc-bankgiro-split
  * Domain Path: /languages
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-define( 'WC_BG_SPLIT_VERSION', '1.2.1' );
+define( 'WC_BG_SPLIT_VERSION', '1.2.2' );
 define( 'WC_BG_SPLIT_PLUGIN_FILE', __FILE__ );
 define( 'WC_BG_SPLIT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 define( 'WC_BG_SPLIT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
@@ -971,6 +971,20 @@ function wc_bankgiro_split_render_order_meta_box( $post_or_order_object ) {
  */
 
 /**
+ * Add quick "Inställningar" link on the WordPress Plugins page.
+ *
+ * @param array $links Existing plugin action links.
+ * @return array
+ */
+function wc_bankgiro_split_plugin_action_links( $links ) {
+	$settings_url  = admin_url( 'admin.php?page=wc-settings&tab=checkout&section=bankgiro_split' );
+	$settings_link = '<a href="' . esc_url( $settings_url ) . '">' . esc_html__( 'Inställningar', 'wc-bankgiro-split' ) . '</a>';
+	array_unshift( $links, $settings_link );
+	return $links;
+}
+add_filter( 'plugin_action_links_' . WC_BG_SPLIT_PLUGIN_BASENAME, 'wc_bankgiro_split_plugin_action_links' );
+
+/**
  * Register the payment gateway in WooCommerce.
  *
  * @param array $gateways Existing WooCommerce payment gateways.
@@ -1051,6 +1065,58 @@ function wc_bankgiro_split_init_gateway_class() {
 
 			// Save admin options.
 			add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
+		}
+
+		/**
+		 * Render the Admin Options page with plugin instructions and email/YayMail hook guide.
+		 */
+		public function admin_options() {
+			?>
+			<h2>
+				<?php echo esc_html( $this->get_method_title() ); ?>
+				<span style="font-size: 12px; font-weight: 600; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle;">
+					v<?php echo esc_html( WC_BG_SPLIT_VERSION ); ?>
+				</span>
+			</h2>
+			<?php echo wp_kses_post( wpautop( $this->get_method_description() ) ); ?>
+
+			<div style="background: #f8fafc; border: 1px solid #cbd5e1; border-left: 4px solid #0d4277; border-radius: 6px; padding: 18px 22px; margin: 18px 0 24px 0; max-width: 920px;">
+				<h3 style="margin: 0 0 10px 0; color: #0d4277; font-size: 16px;">
+					<?php echo esc_html__( '📘 Instruktioner & Guide – Så fungerar tillägget och E-post/YayMail-hooken', 'wc-bankgiro-split' ); ?>
+				</h3>
+
+				<p style="margin: 0 0 10px 0; color: #334155; font-size: 13.5px; line-height: 1.6;">
+					<strong><?php echo esc_html__( '1. Hur betalningen fungerar i kassan & på tacksidan:', 'wc-bankgiro-split' ); ?></strong><br />
+					<?php echo esc_html__( '• Kunden anger Personnummer/Org.nr och väljer antingen 50% förskottsbetalning (resterande 50% vid leverans) eller 100% direktbetalning.', 'wc-bankgiro-split' ); ?><br />
+					<?php echo esc_html__( '• Orderns OCR-nummer sätts automatiskt till exakt samma nummer som WooCommerce-ordernumret.', 'wc-bankgiro-split' ); ?><br />
+					<?php echo esc_html__( '• På tacksidan ("Order mottagen") visas betalningsinstruktionerna tillsammans med ett uppladdningsformulär där kunden direkt kan ladda upp sitt betalningskvitto (bild eller PDF).', 'wc-bankgiro-split' ); ?><br />
+					<?php echo esc_html__( '• Alla uppgifter (betalningsplan, belopp att betala nu, OCR-nummer och uppladdat kvitto) sparas på ordern och syns direkt i WooCommerce Admin under orderdetaljerna.', 'wc-bankgiro-split' ); ?>
+				</p>
+
+				<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 12px 0;" />
+
+				<p style="margin: 0 0 8px 0; color: #334155; font-size: 13.5px; line-height: 1.6;">
+					<strong><?php echo esc_html__( '2. Hur E-post & YayMail-hooken fungerar:', 'wc-bankgiro-split' ); ?></strong><br />
+					<?php echo esc_html__( 'Tillägget använder WooCommerce inbyggda e-post-hook för att automatiskt visa en tabellbaserad betalningsruta i orderbekräftelsen:', 'wc-bankgiro-split' ); ?>
+				</p>
+
+				<div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 10px 14px; margin: 8px 0 10px 0; font-family: Consolas, Monaco, monospace; font-size: 12.5px; color: #0f172a;">
+					<div><strong>Hook-namn:</strong> <code style="background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 3px; font-weight: 700;">woocommerce_email_before_order_table</code></div>
+					<div style="margin-top: 4px;"><strong>Funktion:</strong> <code>fg_display_partial_payment_email_box</code> (Prioritet: <code>20</code>, Argument: <code>4</code>)</div>
+					<div style="margin-top: 4px;"><strong>Tacksida-hook:</strong> <code style="background: #f1f5f9; color: #334155; padding: 2px 6px; border-radius: 3px;">woocommerce_thankyou</code></div>
+				</div>
+
+				<p style="margin: 0; color: #475569; font-size: 13px; line-height: 1.6;">
+					<?php echo esc_html__( '• I YayMail: Dra in blocket "WooCommerce Hook" i din e-postmall och välj hooken "woocommerce_email_before_order_table".', 'wc-bankgiro-split' ); ?><br />
+					<?php echo esc_html__( '• I vanliga WooCommerce-mejl: Betalningsrutan visas helt automatiskt ovanför ordertabellen.', 'wc-bankgiro-split' ); ?><br />
+					<?php echo esc_html__( '• Automatisk kontroll: Betalningsrutan visas ENDAST om ordern är lagd med denna betalningsmetod (bankgiro_split). Vid kort/Klarna visas ingenting.', 'wc-bankgiro-split' ); ?>
+				</p>
+			</div>
+
+			<table class="form-table">
+				<?php $this->generate_settings_html(); ?>
+			</table>
+			<?php
 		}
 
 		/**
