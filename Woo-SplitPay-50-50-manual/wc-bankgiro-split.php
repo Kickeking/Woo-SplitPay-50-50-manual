@@ -198,13 +198,23 @@ class WC_Bankgiro_Split_GitHub_Updater {
 			return $result;
 		}
 
+		$package_url = isset( $release->zipball_url ) ? $release->zipball_url : '';
+		if ( ! empty( $release->assets ) && is_array( $release->assets ) ) {
+			foreach ( $release->assets as $asset ) {
+				if ( ! empty( $asset->browser_download_url ) && false !== strpos( $asset->name, '.zip' ) ) {
+					$package_url = $asset->browser_download_url;
+					break;
+				}
+			}
+		}
+
 		$info                = new stdClass();
 		$info->name          = 'Woo SplitPay 50/50-manual';
 		$info->slug          = dirname( $this->plugin_slug );
 		$info->version       = ltrim( (string) $release->tag_name, 'vV' );
 		$info->author        = '<a href="https://github.com/' . esc_attr( $this->repo ) . '">Area 404</a>';
 		$info->homepage      = 'https://github.com/' . $this->repo;
-		$info->download_link = isset( $release->zipball_url ) ? $release->zipball_url : '';
+		$info->download_link = $package_url;
 		$info->sections      = array(
 			'description' => 'Splits WooCommerce orders into a 50% deposit upon purchase and 50% final payment via manual bank transfer prior to delivery, with custom checkout and order confirmation instructions.',
 			'changelog'   => ! empty( $release->body ) ? nl2br( esc_html( $release->body ) ) : __( 'Latest release from GitHub.', 'wc-bankgiro-split' ),
@@ -215,6 +225,7 @@ class WC_Bankgiro_Split_GitHub_Updater {
 
 	/**
 	 * Ensure extracted GitHub folder matches the installed plugin directory name.
+	 * Handles both attached release .zip assets and GitHub's automatic source zipball_url.
 	 *
 	 * @param bool  $response   Installation response.
 	 * @param array $hook_extra Extra arguments passed to hooked filters.
@@ -228,8 +239,21 @@ class WC_Bankgiro_Split_GitHub_Updater {
 
 		global $wp_filesystem;
 		$install_directory = plugin_dir_path( $this->plugin_file );
-		$wp_filesystem->move( $result['destination'], $install_directory );
+		$source_directory  = $result['destination'];
+		$nested_subdir     = trailingslashit( $source_directory ) . dirname( $this->plugin_slug );
+
+		if ( $wp_filesystem && $wp_filesystem->is_dir( $nested_subdir ) && $wp_filesystem->exists( trailingslashit( $nested_subdir ) . basename( $this->plugin_file ) ) ) {
+			$wp_filesystem->move( $nested_subdir, $install_directory, true );
+			$wp_filesystem->delete( $source_directory, true );
+		} else {
+			$wp_filesystem->move( $source_directory, $install_directory, true );
+		}
+
 		$result['destination'] = $install_directory;
+
+		if ( ! function_exists( 'is_plugin_active' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
 
 		if ( is_plugin_active( $this->plugin_slug ) ) {
 			activate_plugin( $this->plugin_slug );
