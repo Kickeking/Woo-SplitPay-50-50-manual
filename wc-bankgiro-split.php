@@ -17,18 +17,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-define( 'WC_BG_SPLIT_VERSION', '1.2.2' );
-define( 'WC_BG_SPLIT_PLUGIN_FILE', __FILE__ );
-define( 'WC_BG_SPLIT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
-define( 'WC_BG_SPLIT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'WC_BG_SPLIT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'WC_BG_SPLIT_GITHUB_REPO', 'Kickeking/Woo-SplitPay-50-50-manual' );
+if ( ! defined( 'WC_BG_SPLIT_VERSION' ) ) {
+	define( 'WC_BG_SPLIT_VERSION', '1.2.2' );
+}
+if ( ! defined( 'WC_BG_SPLIT_PLUGIN_FILE' ) ) {
+	define( 'WC_BG_SPLIT_PLUGIN_FILE', __FILE__ );
+}
+if ( ! defined( 'WC_BG_SPLIT_PLUGIN_BASENAME' ) ) {
+	define( 'WC_BG_SPLIT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
+}
+if ( ! defined( 'WC_BG_SPLIT_PLUGIN_DIR' ) ) {
+	define( 'WC_BG_SPLIT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+}
+if ( ! defined( 'WC_BG_SPLIT_PLUGIN_URL' ) ) {
+	define( 'WC_BG_SPLIT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+}
+if ( ! defined( 'WC_BG_SPLIT_GITHUB_REPO' ) ) {
+	define( 'WC_BG_SPLIT_GITHUB_REPO', 'Kickeking/Woo-SplitPay-50-50-manual' );
+}
 
 /**
  * ============================================================================
  * 1. GITHUB AUTO-UPDATER CLASS (Hardcoded Background WordPress Transients)
  * ============================================================================
  */
+if ( ! class_exists( 'WC_Bankgiro_Split_GitHub_Updater' ) ) {
 class WC_Bankgiro_Split_GitHub_Updater {
 
 	/**
@@ -53,9 +66,9 @@ class WC_Bankgiro_Split_GitHub_Updater {
 	private $repo;
 
 	/**
-	 * Cached GitHub API release response for current request.
+	 * Cached normalized release response for current request.
 	 *
-	 * @var object|false|null
+	 * @var array|false|null
 	 */
 	private $github_response = null;
 
@@ -79,9 +92,71 @@ class WC_Bankgiro_Split_GitHub_Updater {
 	}
 
 	/**
+	 * Safely normalize release data from either a cached stdClass object, cached array, or fresh GitHub API payload.
+	 * Prevents PHP 8+ fatal TypeErrors when switching between object/array transient formats.
+	 *
+	 * @param mixed $raw Raw or cached release payload.
+	 * @return array|false Normalized array with keys 'version', 'package', 'body', 'published', 'html_url', or false.
+	 */
+	private function normalize_release_data( $raw ) {
+		if ( is_object( $raw ) ) {
+			$raw = (array) $raw;
+		}
+
+		if ( ! is_array( $raw ) || empty( $raw ) ) {
+			return false;
+		}
+
+		// Already normalized array format.
+		if ( ! empty( $raw['version'] ) && ! empty( $raw['package'] ) ) {
+			return array(
+				'version'   => ltrim( (string) $raw['version'], 'vV' ),
+				'package'   => (string) $raw['package'],
+				'body'      => isset( $raw['body'] ) ? (string) $raw['body'] : '',
+				'published' => isset( $raw['published'] ) ? (string) $raw['published'] : '',
+				'html_url'  => isset( $raw['html_url'] ) ? (string) $raw['html_url'] : 'https://github.com/' . $this->repo,
+			);
+		}
+
+		// Raw GitHub API payload (or legacy stdClass transient).
+		if ( empty( $raw['tag_name'] ) ) {
+			return false;
+		}
+
+		$asset_url = '';
+		if ( ! empty( $raw['assets'] ) && ( is_array( $raw['assets'] ) || is_object( $raw['assets'] ) ) ) {
+			foreach ( (array) $raw['assets'] as $asset ) {
+				if ( is_object( $asset ) ) {
+					$asset = (array) $asset;
+				}
+				if ( is_array( $asset ) && ! empty( $asset['browser_download_url'] ) && preg_match( '/\.zip$/i', (string) $asset['browser_download_url'] ) ) {
+					$asset_url = (string) $asset['browser_download_url'];
+					break;
+				}
+			}
+		}
+
+		if ( empty( $asset_url ) && ! empty( $raw['zipball_url'] ) ) {
+			$asset_url = (string) $raw['zipball_url'];
+		}
+
+		if ( empty( $asset_url ) ) {
+			return false;
+		}
+
+		return array(
+			'version'   => ltrim( (string) $raw['tag_name'], 'vV' ),
+			'package'   => $asset_url,
+			'body'      => isset( $raw['body'] ) ? (string) $raw['body'] : '',
+			'published' => isset( $raw['published_at'] ) ? (string) $raw['published_at'] : '',
+			'html_url'  => isset( $raw['html_url'] ) ? (string) $raw['html_url'] : 'https://github.com/' . $this->repo,
+		);
+	}
+
+	/**
 	 * Fetch latest release info from GitHub API with 12-hour WordPress transient caching.
 	 *
-	 * @return object|false
+	 * @return array|false
 	 */
 	private function fetch_latest_release() {
 		if ( empty( $this->repo ) || false === strpos( $this->repo, '/' ) ) {
@@ -89,6 +164,11 @@ class WC_Bankgiro_Split_GitHub_Updater {
 		}
 
 		if ( null !== $this->github_response ) {
+			if ( false === $this->github_response ) {
+				return false;
+			}
+			$normalized_mem = $this->normalize_release_data( $this->github_response );
+			$this->github_response = $normalized_mem ? $normalized_mem : false;
 			return $this->github_response;
 		}
 
@@ -97,8 +177,13 @@ class WC_Bankgiro_Split_GitHub_Updater {
 		$cached        = $force_check ? false : get_transient( $transient_key );
 
 		if ( false !== $cached ) {
-			if ( is_object( $cached ) && ! empty( $cached->tag_name ) ) {
-				$this->github_response = $cached;
+			if ( 'error_backoff' === $cached ) {
+				$this->github_response = false;
+				return false;
+			}
+			$normalized_cache = $this->normalize_release_data( $cached );
+			if ( false !== $normalized_cache ) {
+				$this->github_response = $normalized_cache;
 				return $this->github_response;
 			}
 			delete_transient( $transient_key );
@@ -114,7 +199,7 @@ class WC_Bankgiro_Split_GitHub_Updater {
 			$api_url,
 			array(
 				'headers' => $headers,
-				'timeout' => 12,
+				'timeout' => 10,
 			)
 		);
 
@@ -124,17 +209,19 @@ class WC_Bankgiro_Split_GitHub_Updater {
 			return false;
 		}
 
-		$body = json_decode( wp_remote_retrieve_body( $response ) );
-		if ( empty( $body ) || empty( $body->tag_name ) ) {
+		$body       = json_decode( wp_remote_retrieve_body( $response ), true );
+		$normalized = $this->normalize_release_data( $body );
+
+		if ( false === $normalized ) {
 			set_transient( $transient_key, 'error_backoff', HOUR_IN_SECONDS );
 			$this->github_response = false;
 			return false;
 		}
 
-		set_transient( $transient_key, $body, 12 * HOUR_IN_SECONDS );
-		$this->github_response = $body;
+		set_transient( $transient_key, $normalized, 12 * HOUR_IN_SECONDS );
+		$this->github_response = $normalized;
 
-		return $body;
+		return $this->github_response;
 	}
 
 	/**
@@ -144,37 +231,36 @@ class WC_Bankgiro_Split_GitHub_Updater {
 	 * @return object
 	 */
 	public function check_for_update( $transient ) {
-		if ( empty( $this->repo ) || empty( $transient->checked ) ) {
+		if ( empty( $this->repo ) || empty( $transient ) || ! is_object( $transient ) || empty( $transient->checked ) ) {
 			return $transient;
 		}
 
 		$release = $this->fetch_latest_release();
-		if ( ! $release || empty( $release->tag_name ) ) {
+		if ( ! is_array( $release ) || empty( $release['version'] ) || empty( $release['package'] ) ) {
 			return $transient;
 		}
 
-		$latest_version = ltrim( (string) $release->tag_name, 'vV' );
-		if ( version_compare( $latest_version, WC_BG_SPLIT_VERSION, '>' ) ) {
-			$package_url = isset( $release->zipball_url ) ? $release->zipball_url : '';
+		if ( version_compare( $release['version'], WC_BG_SPLIT_VERSION, '>' ) ) {
+			$plugin_data = array(
+				'id'            => $this->plugin_slug,
+				'slug'          => dirname( $this->plugin_slug ),
+				'plugin'        => $this->plugin_slug,
+				'new_version'   => $release['version'],
+				'url'           => isset( $release['html_url'] ) ? $release['html_url'] : 'https://github.com/' . $this->repo,
+				'package'       => $release['package'],
+				'icons'         => array(),
+				'banners'       => array(),
+				'banners_rtl'   => array(),
+				'tested'        => '',
+				'requires_php'  => '7.4',
+				'compatibility' => new stdClass(),
+			);
 
-			if ( ! empty( $release->assets ) && is_array( $release->assets ) ) {
-				foreach ( $release->assets as $asset ) {
-					if ( ! empty( $asset->browser_download_url ) && false !== strpos( $asset->name, '.zip' ) ) {
-						$package_url = $asset->browser_download_url;
-						break;
-					}
-				}
+			if ( ! isset( $transient->response ) || ! is_array( $transient->response ) ) {
+				$transient->response = array();
 			}
 
-			if ( ! empty( $package_url ) ) {
-				$plugin_obj              = new stdClass();
-				$plugin_obj->slug        = dirname( $this->plugin_slug );
-				$plugin_obj->plugin      = $this->plugin_slug;
-				$plugin_obj->new_version = $latest_version;
-				$plugin_obj->package     = $package_url;
-
-				$transient->response[ $this->plugin_slug ] = $plugin_obj;
-			}
+			$transient->response[ $this->plugin_slug ] = (object) $plugin_data;
 		}
 
 		return $transient;
@@ -189,35 +275,29 @@ class WC_Bankgiro_Split_GitHub_Updater {
 	 * @return false|object|array
 	 */
 	public function plugin_popup_info( $result, $action, $args ) {
-		if ( empty( $this->repo ) || 'plugin_information' !== $action || empty( $args->slug ) || dirname( $this->plugin_slug ) !== $args->slug ) {
+		if ( empty( $this->repo ) || 'plugin_information' !== $action || ! is_object( $args ) || empty( $args->slug ) ) {
+			return $result;
+		}
+
+		if ( dirname( $this->plugin_slug ) !== $args->slug && $this->plugin_slug !== $args->slug ) {
 			return $result;
 		}
 
 		$release = $this->fetch_latest_release();
-		if ( ! $release || empty( $release->tag_name ) ) {
+		if ( ! is_array( $release ) || empty( $release['version'] ) ) {
 			return $result;
-		}
-
-		$package_url = isset( $release->zipball_url ) ? $release->zipball_url : '';
-		if ( ! empty( $release->assets ) && is_array( $release->assets ) ) {
-			foreach ( $release->assets as $asset ) {
-				if ( ! empty( $asset->browser_download_url ) && false !== strpos( $asset->name, '.zip' ) ) {
-					$package_url = $asset->browser_download_url;
-					break;
-				}
-			}
 		}
 
 		$info                = new stdClass();
 		$info->name          = 'Woo SplitPay 50/50-manual';
 		$info->slug          = dirname( $this->plugin_slug );
-		$info->version       = ltrim( (string) $release->tag_name, 'vV' );
+		$info->version       = $release['version'];
 		$info->author        = '<a href="https://github.com/' . esc_attr( $this->repo ) . '">Area 404</a>';
-		$info->homepage      = 'https://github.com/' . $this->repo;
-		$info->download_link = $package_url;
+		$info->homepage      = isset( $release['html_url'] ) ? $release['html_url'] : 'https://github.com/' . $this->repo;
+		$info->download_link = isset( $release['package'] ) ? $release['package'] : '';
 		$info->sections      = array(
 			'description' => 'Splits WooCommerce orders into a 50% deposit upon purchase and 50% final payment via manual bank transfer prior to delivery, with custom checkout and order confirmation instructions.',
-			'changelog'   => ! empty( $release->body ) ? nl2br( esc_html( $release->body ) ) : __( 'Latest release from GitHub.', 'wc-bankgiro-split' ),
+			'changelog'   => ! empty( $release['body'] ) ? nl2br( esc_html( $release['body'] ) ) : __( 'Latest release from GitHub.', 'wc-bankgiro-split' ),
 		);
 
 		return $info;
@@ -233,7 +313,11 @@ class WC_Bankgiro_Split_GitHub_Updater {
 	 * @return array
 	 */
 	public function after_install( $response, $hook_extra, $result ) {
-		if ( empty( $hook_extra['plugin'] ) || $this->plugin_slug !== $hook_extra['plugin'] ) {
+		if ( is_wp_error( $result ) || ! is_array( $result ) || empty( $result['destination'] ) ) {
+			return $result;
+		}
+
+		if ( ! is_array( $hook_extra ) || empty( $hook_extra['plugin'] ) || $this->plugin_slug !== $hook_extra['plugin'] ) {
 			return $result;
 		}
 
@@ -242,31 +326,38 @@ class WC_Bankgiro_Split_GitHub_Updater {
 		$source_directory  = $result['destination'];
 		$nested_subdir     = trailingslashit( $source_directory ) . dirname( $this->plugin_slug );
 
-		if ( $wp_filesystem && $wp_filesystem->is_dir( $nested_subdir ) && $wp_filesystem->exists( trailingslashit( $nested_subdir ) . basename( $this->plugin_file ) ) ) {
-			$wp_filesystem->move( $nested_subdir, $install_directory, true );
-			$wp_filesystem->delete( $source_directory, true );
-		} else {
-			$wp_filesystem->move( $source_directory, $install_directory, true );
+		if ( $wp_filesystem ) {
+			if ( $wp_filesystem->is_dir( $nested_subdir ) && $wp_filesystem->exists( trailingslashit( $nested_subdir ) . basename( $this->plugin_file ) ) ) {
+				$wp_filesystem->move( $nested_subdir, $install_directory, true );
+				$wp_filesystem->delete( $source_directory, true );
+			} elseif ( untrailingslashit( $source_directory ) !== untrailingslashit( $install_directory ) ) {
+				$wp_filesystem->move( $source_directory, $install_directory, true );
+			}
 		}
 
 		$result['destination'] = $install_directory;
 
-		if ( ! function_exists( 'is_plugin_active' ) ) {
+		if ( ! function_exists( 'is_plugin_active' ) && defined( 'ABSPATH' ) && file_exists( ABSPATH . 'wp-admin/includes/plugin.php' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}
 
-		if ( is_plugin_active( $this->plugin_slug ) ) {
-			activate_plugin( $this->plugin_slug );
+		if ( function_exists( 'is_plugin_active' ) && is_plugin_active( $this->plugin_slug ) ) {
+			if ( function_exists( 'activate_plugin' ) ) {
+				activate_plugin( $this->plugin_slug );
+			}
 		}
 
 		return $result;
 	}
 }
+}
 
 add_action(
 	'init',
 	function () {
-		new WC_Bankgiro_Split_GitHub_Updater( WC_BG_SPLIT_PLUGIN_FILE );
+		if ( class_exists( 'WC_Bankgiro_Split_GitHub_Updater' ) ) {
+			new WC_Bankgiro_Split_GitHub_Updater( WC_BG_SPLIT_PLUGIN_FILE );
+		}
 	}
 );
 
@@ -276,6 +367,7 @@ add_action(
  * ============================================================================
  */
 
+if ( ! function_exists( 'wc_bankgiro_split_get_gateway_settings' ) ) {
 /**
  * Retrieve the gateway settings with fallback defaults.
  *
@@ -283,6 +375,9 @@ add_action(
  */
 function wc_bankgiro_split_get_gateway_settings() {
 	$settings     = get_option( 'woocommerce_bankgiro_split_settings', array() );
+	if ( ! is_array( $settings ) ) {
+		$settings = array();
+	}
 	$default_term = __( 'Äganderättsförbehåll: Fönstren/dörrarna förblir säljarens egendom tills full likvid har erhållits.', 'wc-bankgiro-split' );
 
 	return array(
@@ -292,7 +387,9 @@ function wc_bankgiro_split_get_gateway_settings() {
 		'minimum_amount'  => isset( $settings['minimum_amount'] ) && '' !== $settings['minimum_amount'] ? (float) $settings['minimum_amount'] : 10000.0,
 	);
 }
+}
 
+if ( ! function_exists( 'wc_bankgiro_split_get_order_payment_data' ) ) {
 /**
  * Extract or calculate the payment details for an order.
  *
@@ -345,7 +442,9 @@ function wc_bankgiro_split_get_order_payment_data( $order ) {
 		'receipt_id'      => $receipt_id,
 	);
 }
+}
 
+if ( ! function_exists( 'wc_bankgiro_split_get_payment_box_table_html' ) ) {
 /**
  * Render an email-safe, table-based HTML box with inline CSS styling containing the Bankgiro payment instructions.
  *
@@ -462,7 +561,9 @@ function wc_bankgiro_split_get_payment_box_table_html( $order ) {
 	<?php
 	return ob_get_clean();
 }
+}
 
+if ( ! function_exists( 'fg_display_partial_payment_email_box' ) ) {
 /**
  * Render the Bankgiro payment instructions inside WooCommerce & YayMail emails.
  * Hooked to `woocommerce_email_before_order_table` with priority 20 and 4 arguments.
@@ -511,6 +612,7 @@ function fg_display_partial_payment_email_box( $order, $sent_to_admin = false, $
 	// 3. Output the email-safe, table-based HTML box.
 	echo wc_bankgiro_split_get_payment_box_table_html( $order ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 }
+}
 add_action( 'woocommerce_email_before_order_table', 'fg_display_partial_payment_email_box', 20, 4 );
 
 /**
@@ -519,6 +621,7 @@ add_action( 'woocommerce_email_before_order_table', 'fg_display_partial_payment_
  * ============================================================================
  */
 
+if ( ! function_exists( 'wc_bankgiro_split_process_receipt_upload_for_order' ) ) {
 /**
  * Handle receipt file upload submitted on the Thank You page (both standard POST and AJAX).
  *
@@ -626,7 +729,9 @@ function wc_bankgiro_split_process_receipt_upload_for_order( $order_id ) {
 		'url'     => (string) $attachment_url,
 	);
 }
+}
 
+if ( ! function_exists( 'wc_bankgiro_split_ajax_upload_receipt' ) ) {
 /**
  * AJAX endpoint for uploading the receipt on the Thank You page without reloading.
  */
@@ -645,9 +750,11 @@ function wc_bankgiro_split_ajax_upload_receipt() {
 		wp_send_json_error( $result );
 	}
 }
+}
 add_action( 'wp_ajax_wc_bg_upload_receipt', 'wc_bankgiro_split_ajax_upload_receipt' );
 add_action( 'wp_ajax_nopriv_wc_bg_upload_receipt', 'wc_bankgiro_split_ajax_upload_receipt' );
 
+if ( ! function_exists( 'wc_bankgiro_split_thankyou_page_output' ) ) {
 /**
  * Render the Payment Instructions + Receipt Upload Form on the "Order Received" (Thank You) page.
  * Hooked into `woocommerce_thankyou`.
@@ -788,6 +895,7 @@ function wc_bankgiro_split_thankyou_page_output( $order_id ) {
 	</script>
 	<?php
 }
+}
 add_action( 'woocommerce_thankyou', 'wc_bankgiro_split_thankyou_page_output', 10, 1 );
 
 /**
@@ -796,6 +904,7 @@ add_action( 'woocommerce_thankyou', 'wc_bankgiro_split_thankyou_page_output', 10
  * ============================================================================
  */
 
+if ( ! function_exists( 'wc_bankgiro_split_display_admin_order_meta' ) ) {
 /**
  * Display Bankgiro 50/50 Split payment details directly inside the WooCommerce Admin Order Details panel.
  *
@@ -877,8 +986,10 @@ function wc_bankgiro_split_display_admin_order_meta( $order ) {
 	</div>
 	<?php
 }
+}
 add_action( 'woocommerce_admin_order_data_after_billing_address', 'wc_bankgiro_split_display_admin_order_meta', 10, 1 );
 
+if ( ! function_exists( 'wc_bankgiro_split_register_order_meta_box' ) ) {
 /**
  * Register a dedicated Meta Box in the WooCommerce Admin Order screen (supports both legacy posts and HPOS).
  */
@@ -899,8 +1010,10 @@ function wc_bankgiro_split_register_order_meta_box() {
 		);
 	}
 }
+}
 add_action( 'add_meta_boxes', 'wc_bankgiro_split_register_order_meta_box' );
 
+if ( ! function_exists( 'wc_bankgiro_split_render_order_meta_box' ) ) {
 /**
  * Render the side Meta Box content inside WooCommerce Admin Order view.
  *
@@ -909,7 +1022,7 @@ add_action( 'add_meta_boxes', 'wc_bankgiro_split_register_order_meta_box' );
 function wc_bankgiro_split_render_order_meta_box( $post_or_order_object ) {
 	$order = is_a( $post_or_order_object, 'WC_Order' )
 		? $post_or_order_object
-		: wc_get_order( $post_or_order_object->ID );
+		: ( is_object( $post_or_order_object ) && isset( $post_or_order_object->ID ) && function_exists( 'wc_get_order' ) ? wc_get_order( $post_or_order_object->ID ) : false );
 
 	if ( ! $order ) {
 		return;
@@ -963,6 +1076,7 @@ function wc_bankgiro_split_render_order_meta_box( $post_or_order_object ) {
 	</div>
 	<?php
 }
+}
 
 /**
  * ============================================================================
@@ -970,6 +1084,7 @@ function wc_bankgiro_split_render_order_meta_box( $post_or_order_object ) {
  * ============================================================================
  */
 
+if ( ! function_exists( 'wc_bankgiro_split_plugin_action_links' ) ) {
 /**
  * Add quick "Inställningar" link on the WordPress Plugins page.
  *
@@ -977,13 +1092,18 @@ function wc_bankgiro_split_render_order_meta_box( $post_or_order_object ) {
  * @return array
  */
 function wc_bankgiro_split_plugin_action_links( $links ) {
+	if ( ! is_array( $links ) ) {
+		$links = array();
+	}
 	$settings_url  = admin_url( 'admin.php?page=wc-settings&tab=checkout&section=bankgiro_split' );
 	$settings_link = '<a href="' . esc_url( $settings_url ) . '">' . esc_html__( 'Inställningar', 'wc-bankgiro-split' ) . '</a>';
 	array_unshift( $links, $settings_link );
 	return $links;
 }
+}
 add_filter( 'plugin_action_links_' . WC_BG_SPLIT_PLUGIN_BASENAME, 'wc_bankgiro_split_plugin_action_links' );
 
+if ( ! function_exists( 'wc_bankgiro_split_add_gateway' ) ) {
 /**
  * Register the payment gateway in WooCommerce.
  *
@@ -991,16 +1111,23 @@ add_filter( 'plugin_action_links_' . WC_BG_SPLIT_PLUGIN_BASENAME, 'wc_bankgiro_s
  * @return array
  */
 function wc_bankgiro_split_add_gateway( $gateways ) {
-	$gateways[] = 'WC_Gateway_Bankgiro_Split';
+	if ( ! is_array( $gateways ) ) {
+		return $gateways;
+	}
+	if ( ! in_array( 'WC_Gateway_Bankgiro_Split', $gateways, true ) ) {
+		$gateways[] = 'WC_Gateway_Bankgiro_Split';
+	}
 	return $gateways;
+}
 }
 add_filter( 'woocommerce_payment_gateways', 'wc_bankgiro_split_add_gateway' );
 
+if ( ! function_exists( 'wc_bankgiro_split_init_gateway_class' ) ) {
 /**
  * Initialize the gateway class once plugins are loaded.
  */
 function wc_bankgiro_split_init_gateway_class() {
-	if ( ! class_exists( 'WC_Payment_Gateway' ) ) {
+	if ( ! class_exists( 'WC_Payment_Gateway' ) || class_exists( 'WC_Gateway_Bankgiro_Split' ) ) {
 		return;
 	}
 
@@ -1323,7 +1450,7 @@ function wc_bankgiro_split_init_gateway_class() {
 			$order->save();
 
 			// 6. Empty WooCommerce cart and redirect to Thank You page.
-			if ( isset( WC()->cart ) ) {
+			if ( function_exists( 'WC' ) && WC() && isset( WC()->cart ) && is_object( WC()->cart ) && method_exists( WC()->cart, 'empty_cart' ) ) {
 				WC()->cart->empty_cart();
 			}
 
@@ -1334,6 +1461,7 @@ function wc_bankgiro_split_init_gateway_class() {
 		}
 	}
 }
+}
 add_action( 'plugins_loaded', 'wc_bankgiro_split_init_gateway_class' );
 
 /**
@@ -1342,6 +1470,7 @@ add_action( 'plugins_loaded', 'wc_bankgiro_split_init_gateway_class' );
  * ============================================================================
  */
 
+if ( ! function_exists( 'wc_bankgiro_split_restrict_by_order_total' ) ) {
 /**
  * Restrict the Bankgiro Split payment gateway based on the minimum cart total.
  *
@@ -1349,20 +1478,20 @@ add_action( 'plugins_loaded', 'wc_bankgiro_split_init_gateway_class' );
  * @return array
  */
 function wc_bankgiro_split_restrict_by_order_total( $available_gateways ) {
-	if ( is_admin() ) {
+	if ( ! is_array( $available_gateways ) || is_admin() ) {
 		return $available_gateways;
 	}
 
-	if ( ! isset( $available_gateways['bankgiro_split'] ) ) {
+	if ( ! isset( $available_gateways['bankgiro_split'] ) || ! is_object( $available_gateways['bankgiro_split'] ) ) {
 		return $available_gateways;
 	}
 
 	$gateway        = $available_gateways['bankgiro_split'];
 	$minimum_amount = isset( $gateway->minimum_amount ) && '' !== (string) $gateway->minimum_amount
 		? (float) $gateway->minimum_amount
-		: (float) $gateway->get_option( 'minimum_amount', 10000 );
+		: ( method_exists( $gateway, 'get_option' ) ? (float) $gateway->get_option( 'minimum_amount', 10000 ) : 10000.0 );
 
-	if ( isset( WC()->cart ) && WC()->cart ) {
+	if ( function_exists( 'WC' ) && WC() && isset( WC()->cart ) && is_object( WC()->cart ) && method_exists( WC()->cart, 'get_total' ) ) {
 		$cart_total = (float) WC()->cart->get_total( 'edit' );
 
 		if ( $cart_total < $minimum_amount ) {
@@ -1371,5 +1500,6 @@ function wc_bankgiro_split_restrict_by_order_total( $available_gateways ) {
 	}
 
 	return $available_gateways;
+}
 }
 add_filter( 'woocommerce_available_payment_gateways', 'wc_bankgiro_split_restrict_by_order_total' );
