@@ -93,15 +93,15 @@ class WC_Bankgiro_Split_GitHub_Updater {
 		}
 
 		$transient_key = 'wc_bg_split_gh_rel_' . md5( $this->repo );
-		$cached        = get_transient( $transient_key );
+		$force_check   = ! empty( $_GET['force-check'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$cached        = $force_check ? false : get_transient( $transient_key );
 
 		if ( false !== $cached ) {
-			if ( 'error_backoff' === $cached ) {
-				$this->github_response = false;
-				return false;
+			if ( is_object( $cached ) && ! empty( $cached->tag_name ) ) {
+				$this->github_response = $cached;
+				return $this->github_response;
 			}
-			$this->github_response = $cached;
-			return $this->github_response;
+			delete_transient( $transient_key );
 		}
 
 		$api_url = sprintf( 'https://api.github.com/repos/%s/releases/latest', $this->repo );
