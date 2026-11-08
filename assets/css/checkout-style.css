@@ -1,0 +1,443 @@
+/**
+ * Frontend Checkout Styles for Woo SplitPay & Delbetalning Dual-Mode Gateway
+ *
+ * @package WC_Bankgiro_Split
+ */
+
+.wc-bg-dual-checkout-wrap {
+	margin: 10px 0 6px 0;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	color: #1e293b;
+}
+
+.wc-bg-gateway-intro {
+	margin: 0 0 16px 0;
+	font-size: 14px;
+	color: #334155;
+	line-height: 1.5;
+}
+
+/* 1. Primary Mode Selector Radio Cards (Split vs Delbetalning) */
+.wc-bg-mode-selector {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px;
+	margin-bottom: 20px;
+	align-items: stretch;
+}
+
+@media (max-width: 600px) {
+	.wc-bg-mode-selector {
+		grid-template-columns: 1fr;
+		gap: 12px;
+	}
+}
+
+.wc-bg-mode-card {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 16px 20px;
+	min-height: 88px;
+	box-sizing: border-box;
+	background: #ffffff;
+	border: 2px solid #cbd5e1;
+	border-radius: 10px;
+	cursor: pointer;
+	transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+	user-select: none;
+	margin: 0 !important;
+	height: 100%;
+}
+
+.wc-bg-mode-card:hover {
+	border-color: #64748b;
+	background: #f8fafc;
+	transform: translateY(-1px);
+}
+
+.wc-bg-mode-card.is-selected {
+	border-color: #0d4277;
+	background: #f0f7ff;
+	box-shadow: 0 4px 14px rgba(13, 66, 119, 0.12);
+}
+
+.wc-bg-mode-card input[type="radio"].wc-bg-mode-radio {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.wc-bg-mode-radio-indicator {
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	border: 2px solid #94a3b8;
+	background: #ffffff;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.wc-bg-mode-card.is-selected .wc-bg-mode-radio-indicator {
+	border-color: #0d4277;
+	background: #0d4277;
+}
+
+.wc-bg-mode-card.is-selected .wc-bg-mode-radio-indicator::after {
+	content: "";
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #ffffff;
+	display: block;
+}
+
+/* Mode Card Logos - High specificity override to counteract WooCommerce core & theme image caps */
+.wc-bg-mode-logo {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: auto;
+	max-width: 170px;
+	height: auto;
+	min-height: 58px;
+	padding: 0;
+	margin: 0;
+}
+
+#payment .payment_methods li .wc-bg-mode-logo img,
+#payment ul.payment_methods li.wc_payment_method .wc-bg-mode-logo img,
+.woocommerce-checkout #payment .wc-bg-mode-card .wc-bg-mode-logo img,
+.woocommerce-checkout #payment .wc-bg-mode-logo img,
+form.checkout #payment .wc-bg-mode-logo img,
+.wc-bg-dual-checkout-wrap .wc-bg-mode-logo img {
+	height: 58px !important;
+	max-height: 64px !important;
+	width: auto !important;
+	max-width: 165px !important;
+	object-fit: contain !important;
+	display: block !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	box-shadow: none !important;
+	border: none !important;
+	border-radius: 0 !important;
+}
+
+.wc-bg-mode-logo-fallback {
+	width: 58px;
+	height: 58px;
+	border-radius: 8px;
+	background: #e0f2fe;
+	color: #0d4277;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 22px;
+	font-weight: 700;
+	flex-shrink: 0;
+}
+
+.wc-bg-mode-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	flex: 1;
+}
+
+.wc-bg-mode-title {
+	font-size: 15px;
+	font-weight: 700;
+	color: #0f172a;
+	line-height: 1.25;
+}
+
+.wc-bg-mode-card.is-selected .wc-bg-mode-title {
+	color: #0d4277;
+}
+
+.wc-bg-mode-subtitle {
+	font-size: 12.5px;
+	color: #64748b;
+	line-height: 1.35;
+	margin-top: 3px;
+}
+
+/* 2. Shared Field (SSN / Org.nr) */
+.wc-bg-shared-field {
+	margin-bottom: 20px;
+}
+
+.wc-bg-shared-field label,
+.wc-bg-field-group label {
+	display: block;
+	font-size: 13.5px;
+	font-weight: 600;
+	color: #1e293b;
+	margin-bottom: 7px;
+}
+
+.wc-bg-shared-field input.input-text,
+.wc-bg-field-group select.wc-bg-select {
+	width: 100% !important;
+	min-height: 46px;
+	padding: 10px 14px;
+	border: 1.5px solid #cbd5e1;
+	border-radius: 8px;
+	background-color: #ffffff;
+	font-size: 14.5px;
+	color: #0f172a;
+	box-sizing: border-box;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wc-bg-shared-field input.input-text:focus,
+.wc-bg-field-group select.wc-bg-select:focus {
+	border-color: #0d4277;
+	box-shadow: 0 0 0 3px rgba(13, 66, 119, 0.15);
+	outline: none;
+}
+
+.wc-bg-shared-field input.input-text:focus,
+.wc-bg-field-group select.wc-bg-select:focus {
+	border-color: #0d4277;
+	box-shadow: 0 0 0 2px rgba(13, 66, 119, 0.15);
+	outline: none;
+}
+
+/* 3. Dynamic Mode Panels */
+.wc-bg-mode-panel {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 18px;
+	margin-top: 10px;
+}
+
+.wc-bg-mode-panel.is-hidden {
+	display: none !important;
+}
+
+.wc-bg-mode-info-text {
+	font-size: 13.5px;
+	color: #334155;
+	line-height: 1.55;
+	margin: 0 0 16px 0;
+}
+
+.wc-bg-field-group {
+	margin-bottom: 16px;
+}
+
+.wc-bg-field-group:last-child {
+	margin-bottom: 0;
+}
+
+/* 4. Delbetalning Comparison Table */
+.wc-bg-table-heading {
+	display: block;
+	font-size: 14.5px;
+	font-weight: 700;
+	color: #0d4277;
+	margin: 0 0 12px 0;
+}
+
+.wc-bg-campaign-table-wrap {
+	width: 100%;
+	overflow-x: auto;
+	margin: 0 0 18px 0;
+	border: 1.5px solid #cbd5e1;
+	border-radius: 8px;
+	background: #ffffff;
+	box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.wc-bg-campaign-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13.5px;
+	min-width: 580px;
+	margin: 0 !important;
+}
+
+.wc-bg-campaign-table thead th {
+	background: #0d4277;
+	color: #ffffff;
+	font-weight: 600;
+	text-align: left;
+	padding: 12px 14px;
+	font-size: 12.5px;
+	border-bottom: 1px solid #0d4277;
+	white-space: nowrap;
+}
+
+.wc-bg-campaign-table thead th.wc-bg-radio-header {
+	width: 46px;
+	padding: 12px 8px;
+	text-align: center;
+}
+
+.wc-bg-campaign-table tbody tr {
+	border-bottom: 1px solid #e2e8f0;
+	cursor: pointer;
+	transition: background-color 0.12s ease;
+}
+
+.wc-bg-campaign-table tbody tr:last-child {
+	border-bottom: none;
+}
+
+.wc-bg-campaign-table tbody tr:hover {
+	background-color: #f1f5f9;
+}
+
+.wc-bg-campaign-table tbody tr.is-selected-row {
+	background-color: #e0f2fe;
+}
+
+.wc-bg-campaign-table tbody td {
+	padding: 12px 14px;
+	color: #1e293b;
+	vertical-align: middle;
+}
+
+.wc-bg-campaign-table tbody td.wc-bg-radio-cell {
+	width: 46px;
+	padding: 12px 8px;
+	text-align: center;
+}
+
+.wc-bg-table-radio-circle {
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	border: 2px solid #94a3b8;
+	background: #ffffff;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: border-color 0.15s ease, background-color 0.15s ease;
+	vertical-align: middle;
+	box-sizing: border-box;
+}
+
+.wc-bg-campaign-table tbody tr.is-selected-row .wc-bg-table-radio-circle {
+	border-color: #0d4277;
+	background: #0d4277;
+}
+
+.wc-bg-campaign-table tbody tr.is-selected-row .wc-bg-table-radio-circle::after {
+	content: "";
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: #ffffff;
+	display: block;
+}
+
+.wc-bg-campaign-table tbody td.wc-bg-camp-name-cell {
+	font-weight: 600;
+	color: #0d4277;
+}
+
+/* 5. Dynamic Delbetalning Instant Summary Display Box */
+.wc-bg-delbetalning-summary-box {
+	margin: 0 0 18px 0;
+	padding: 16px 20px;
+	background: #ffffff;
+	border: 1.5px solid #bfdbfe;
+	border-left: 5px solid #0d4277;
+	border-radius: 8px;
+	font-size: 13.5px;
+	line-height: 1.55;
+	color: #1e293b;
+	box-shadow: 0 2px 6px rgba(13, 66, 119, 0.06);
+}
+
+.wc-bg-delbetalning-summary-box .wc-bg-summary-line-plan {
+	font-size: 14.5px;
+	color: #0f172a;
+}
+
+.wc-bg-delbetalning-summary-box .wc-bg-summary-line-plan strong {
+	color: #0d4277;
+}
+
+.wc-bg-delbetalning-summary-box .wc-bg-summary-monthly-amount {
+	font-weight: 700;
+	color: #16a34a;
+	font-size: 15px;
+}
+
+.wc-bg-delbetalning-summary-box .wc-bg-summary-calc {
+	color: #64748b;
+	font-weight: normal;
+	font-size: 13px;
+	margin-left: 4px;
+}
+
+.wc-bg-delbetalning-summary-box .wc-bg-summary-details {
+	font-size: 13px;
+	color: #64748b;
+	margin-top: 6px;
+	padding-top: 6px;
+	border-top: 1px dashed #cbd5e1;
+}
+
+/* 6. Delbetalning Terms Wrapper & "Övrig information" Box */
+.wc-bg-terms-wrapper {
+	margin-top: 20px;
+}
+
+.wc-bg-terms-heading {
+	font-size: 13.5px;
+	font-weight: 700;
+	color: #0d4277;
+	margin: 0 0 8px 0;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.wc-bg-other-info-box {
+	margin-top: 0;
+	padding: 18px 20px;
+	background: #ffffff;
+	border: 1px solid #cbd5e1;
+	border-left: 4px solid #0d4277;
+	border-radius: 8px;
+	font-size: 13px;
+	color: #334155;
+	line-height: 1.6;
+}
+
+.wc-bg-other-info-box h4 {
+	margin: 0 0 10px 0 !important;
+	font-size: 14px !important;
+	font-weight: 700 !important;
+	color: #0d4277 !important;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+.wc-bg-other-info-box ul {
+	margin: 0 0 12px 18px !important;
+	padding: 0 !important;
+	list-style: disc !important;
+}
+
+.wc-bg-other-info-box li {
+	margin-bottom: 7px !important;
+}
+
+.wc-bg-other-info-box p {
+	margin: 0 0 8px 0 !important;
+}
+
+.wc-bg-other-info-box p:last-child {
+	margin-bottom: 0 !important;
+}
