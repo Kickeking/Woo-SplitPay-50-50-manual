@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Woo SplitPay 50/50-manual
  * Description: Splits WooCommerce orders into a 50% deposit upon purchase and 50% final payment via manual bank transfer prior to delivery, with custom checkout and order confirmation instructions.
- * Version:     2.0.0
+ * Version:     2.1.0
  * Author:      Area 404
  * Text Domain: wc-bankgiro-split
  * Domain Path: /languages
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'WC_BG_SPLIT_VERSION' ) ) {
-	define( 'WC_BG_SPLIT_VERSION', '2.0.0' );
+	define( 'WC_BG_SPLIT_VERSION', '2.1.0' );
 }
 if ( ! defined( 'WC_BG_SPLIT_PLUGIN_FILE' ) ) {
 	define( 'WC_BG_SPLIT_PLUGIN_FILE', __FILE__ );
@@ -1861,6 +1861,7 @@ function wc_bankgiro_split_init_gateway_class() {
 					'title'       => __( 'Split: Instruktionstext', 'wc-bankgiro-split' ),
 					'type'        => 'textarea',
 					'default'     => __( 'Betala 50% i förskott och resterande 50% innan leverans via Bankgiro.', 'wc-bankgiro-split' ),
+					'description' => __( 'Instruktionstext som visas i kassan när Split är valt. HTML-formatering som &lt;strong&gt;, &lt;br&gt;, &lt;ul&gt;, &lt;li&gt;, &lt;a&gt; stöds.', 'wc-bankgiro-split' ),
 				),
 				'bankgiro_number' => array(
 					'title'       => __( 'Bankgironummer', 'wc-bankgiro-split' ),
@@ -1893,6 +1894,7 @@ function wc_bankgiro_split_init_gateway_class() {
 					'title'       => __( 'Delbetalning: Instruktionstext', 'wc-bankgiro-split' ),
 					'type'        => 'textarea',
 					'default'     => __( 'Välj flexibel delbetalning upp till 36 månader via LF Finans.', 'wc-bankgiro-split' ),
+					'description' => __( 'Instruktionstext som visas i kassan när Delbetalning är valt. HTML-formatering som &lt;strong&gt;, &lt;br&gt;, &lt;ul&gt;, &lt;li&gt;, &lt;a&gt; stöds.', 'wc-bankgiro-split' ),
 				),
 				'delbetalning_terms_heading' => array(
 					'title'       => __( 'Delbetalning: Villkorsrubrik', 'wc-bankgiro-split' ),
@@ -1969,7 +1971,38 @@ function wc_bankgiro_split_init_gateway_class() {
 				$settings['delbetalning_ovrig_info'] = wp_kses_post( wp_unslash( $_POST['wc_bg_ovrig_info'] ) );
 			}
 
+			// 5. Save HTML Descriptions with wp_kses_post
+			$post_prefix = 'woocommerce_' . $this->id . '_';
+			if ( isset( $_POST[ $post_prefix . 'split_description' ] ) ) {
+				$settings['split_description'] = wp_kses_post( wp_unslash( $_POST[ $post_prefix . 'split_description' ] ) );
+			}
+			if ( isset( $_POST[ $post_prefix . 'delbetalning_description' ] ) ) {
+				$settings['delbetalning_description'] = wp_kses_post( wp_unslash( $_POST[ $post_prefix . 'delbetalning_description' ] ) );
+			}
+
 			update_option( $this->get_option_key(), $settings );
+		}
+
+		/**
+		 * Validate and sanitize split_description allowing safe HTML tags.
+		 *
+		 * @param string $key   Field key.
+		 * @param string $value Field value.
+		 * @return string Sanitized HTML.
+		 */
+		public function validate_split_description_field( $key, $value ) {
+			return wp_kses_post( trim( wp_unslash( $value ) ) );
+		}
+
+		/**
+		 * Validate and sanitize delbetalning_description allowing safe HTML tags.
+		 *
+		 * @param string $key   Field key.
+		 * @param string $value Field value.
+		 * @return string Sanitized HTML.
+		 */
+		public function validate_delbetalning_description_field( $key, $value ) {
+			return wp_kses_post( trim( wp_unslash( $value ) ) );
 		}
 
 		/**
@@ -2399,34 +2432,42 @@ function wc_bankgiro_split_init_gateway_class() {
 						<!-- Card 1: Split -->
 						<label class="wc-bg-mode-card is-selected" data-mode="split">
 							<input type="radio" name="bg_payment_mode" class="wc-bg-mode-radio" value="split" checked />
-							<span class="wc-bg-mode-radio-indicator"></span>
-							<div class="wc-bg-mode-logo">
-								<?php if ( ! empty( $gw_settings['split_logo'] ) ) : ?>
-									<img src="<?php echo esc_url( $gw_settings['split_logo'] ); ?>" alt="Split" />
-								<?php else : ?>
-									<span class="wc-bg-mode-logo-fallback">½</span>
-								<?php endif; ?>
+							<div class="wc-bg-mode-top-row">
+								<span class="wc-bg-mode-radio-indicator"></span>
+								<div class="wc-bg-mode-text">
+									<span class="wc-bg-mode-title"><?php echo esc_html( $gw_settings['split_title'] ); ?></span>
+									<span class="wc-bg-mode-subtitle"><?php echo esc_html( $gw_settings['split_subtitle'] ); ?></span>
+								</div>
 							</div>
-							<div class="wc-bg-mode-text">
-								<span class="wc-bg-mode-title"><?php echo esc_html( $gw_settings['split_title'] ); ?></span>
-								<span class="wc-bg-mode-subtitle"><?php echo esc_html( $gw_settings['split_subtitle'] ); ?></span>
+							<div class="wc-bg-mode-logo-row">
+								<div class="wc-bg-mode-logo">
+									<?php if ( ! empty( $gw_settings['split_logo'] ) ) : ?>
+										<img src="<?php echo esc_url( $gw_settings['split_logo'] ); ?>" alt="Split" />
+									<?php else : ?>
+										<span class="wc-bg-mode-logo-fallback">½</span>
+									<?php endif; ?>
+								</div>
 							</div>
 						</label>
 
 						<!-- Card 2: Delbetalning -->
 						<label class="wc-bg-mode-card" data-mode="delbetalning">
 							<input type="radio" name="bg_payment_mode" class="wc-bg-mode-radio" value="delbetalning" />
-							<span class="wc-bg-mode-radio-indicator"></span>
-							<div class="wc-bg-mode-logo">
-								<?php if ( ! empty( $gw_settings['delbetalning_logo'] ) ) : ?>
-									<img src="<?php echo esc_url( $gw_settings['delbetalning_logo'] ); ?>" alt="LF Finans" />
-								<?php else : ?>
-									<span class="wc-bg-mode-logo-fallback">LF</span>
-								<?php endif; ?>
+							<div class="wc-bg-mode-top-row">
+								<span class="wc-bg-mode-radio-indicator"></span>
+								<div class="wc-bg-mode-text">
+									<span class="wc-bg-mode-title"><?php echo esc_html( $gw_settings['delbetalning_title'] ); ?></span>
+									<span class="wc-bg-mode-subtitle"><?php echo esc_html( $gw_settings['delbetalning_subtitle'] ); ?></span>
+								</div>
 							</div>
-							<div class="wc-bg-mode-text">
-								<span class="wc-bg-mode-title"><?php echo esc_html( $gw_settings['delbetalning_title'] ); ?></span>
-								<span class="wc-bg-mode-subtitle"><?php echo esc_html( $gw_settings['delbetalning_subtitle'] ); ?></span>
+							<div class="wc-bg-mode-logo-row">
+								<div class="wc-bg-mode-logo">
+									<?php if ( ! empty( $gw_settings['delbetalning_logo'] ) ) : ?>
+										<img src="<?php echo esc_url( $gw_settings['delbetalning_logo'] ); ?>" alt="LF Finans" />
+									<?php else : ?>
+										<span class="wc-bg-mode-logo-fallback">LF</span>
+									<?php endif; ?>
+								</div>
 							</div>
 						</label>
 					</div>
@@ -2454,7 +2495,7 @@ function wc_bankgiro_split_init_gateway_class() {
 				<?php if ( 'yes' === $gw_settings['enable_split'] ) : ?>
 					<!-- Panel 1: Split (50/50) -->
 					<div class="wc-bg-mode-panel <?php echo ( 'split' === $default_mode ) ? '' : 'is-hidden'; ?>" data-mode="split">
-						<p class="wc-bg-mode-info-text"><?php echo esc_html( $gw_settings['split_description'] ); ?></p>
+						<div class="wc-bg-mode-info-text"><?php echo wp_kses_post( wpautop( $gw_settings['split_description'] ) ); ?></div>
 
 						<div class="wc-bg-field-group">
 							<label for="bg_payment_choice">
@@ -2483,7 +2524,7 @@ function wc_bankgiro_split_init_gateway_class() {
 				<?php if ( 'yes' === $gw_settings['enable_delbetalning'] ) : ?>
 					<!-- Panel 2: Delbetalning -->
 					<div class="wc-bg-mode-panel <?php echo ( 'delbetalning' === $default_mode ) ? '' : 'is-hidden'; ?>" data-mode="delbetalning" data-cart-total="<?php echo esc_attr( (string) $cart_total ); ?>">
-						<p class="wc-bg-mode-info-text"><?php echo esc_html( $gw_settings['delbetalning_description'] ); ?></p>
+						<div class="wc-bg-mode-info-text"><?php echo wp_kses_post( wpautop( $gw_settings['delbetalning_description'] ) ); ?></div>
 
 						<label class="wc-bg-table-heading" for="bg_delbetalning_campaign">
 							<?php echo esc_html__( 'Välj önskad delbetalningsplan:', 'wc-bankgiro-split' ); ?>
