@@ -150,6 +150,19 @@
 	display: none !important;
 }
 
+/* User Guide section must strictly show ONLY when data-active-tab is 'guide' */
+.wc-bg-admin-wrap:not([data-active-tab="guide"]) .wc-bg-admin-section[data-section="guide"] {
+	display: none !important;
+}
+
+.wc-bg-admin-wrap[data-active-tab="guide"] .wc-bg-admin-section[data-section="guide"] {
+	display: block !important;
+}
+
+.wc-bg-admin-wrap[data-active-tab="guide"] .wc-bg-admin-section:not([data-section="guide"]) {
+	display: none !important;
+}
+
 .wc-bg-admin-section-header {
 	border-bottom: 1px solid #e2e8f0;
 	padding-bottom: 14px;

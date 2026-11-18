@@ -174,5 +174,42 @@
 
 			updateDelbetalningSummary($wrap, idx);
 		});
+
+		// Collapsible "Villkor" accordion on mobile (<= 767px)
+		$(document).on('click', '.wc-bg-terms-toggle', function (e) {
+			if (window.innerWidth <= 767) {
+				e.preventDefault();
+				e.stopPropagation();
+
+				var $toggle  = $(this);
+				var $wrap    = $toggle.closest('.wc-bg-terms-wrapper');
+				var $content = $wrap.find('.wc-bg-other-info-box');
+				var $text    = $toggle.find('.wc-bg-terms-toggle-text');
+				var $icon    = $toggle.find('.wc-bg-terms-toggle-icon');
+				var isOpen   = $wrap.hasClass('is-open');
+
+				if (isOpen) {
+					$content.stop(true, true).slideUp(200, function () {
+						$wrap.removeClass('is-open');
+						$toggle.removeClass('is-open').attr('aria-expanded', 'false');
+						$text.text('Visa villkor');
+						$icon.text('▼');
+					});
+				} else {
+					$wrap.addClass('is-open');
+					$toggle.addClass('is-open').attr('aria-expanded', 'true');
+					$text.text('Dölj villkor');
+					$icon.text('▲');
+					$content.stop(true, true).slideDown(200);
+				}
+			}
+		});
+
+		$(document).on('keydown', '.wc-bg-terms-toggle', function (e) {
+			if (window.innerWidth <= 767 && (e.key === 'Enter' || e.key === ' ')) {
+				e.preventDefault();
+				$(this).trigger('click');
+			}
+		});
 	});
 })(jQuery);

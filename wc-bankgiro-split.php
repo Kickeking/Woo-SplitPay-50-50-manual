@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Woo SplitPay 50/50-manual
  * Description: Splits WooCommerce orders into a 50% deposit upon purchase and 50% final payment via manual bank transfer prior to delivery, with custom checkout and order confirmation instructions.
- * Version:     2.1.0
+ * Version:     2.1.1
  * Author:      Area 404
  * Text Domain: wc-bankgiro-split
  * Domain Path: /languages
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'WC_BG_SPLIT_VERSION' ) ) {
-	define( 'WC_BG_SPLIT_VERSION', '2.1.0' );
+	define( 'WC_BG_SPLIT_VERSION', '2.1.1' );
 }
 if ( ! defined( 'WC_BG_SPLIT_PLUGIN_FILE' ) ) {
 	define( 'WC_BG_SPLIT_PLUGIN_FILE', __FILE__ );
@@ -532,6 +532,108 @@ function wc_bankgiro_split_get_default_ovrig_info() {
 }
 }
 
+if ( ! function_exists( 'wc_bankgiro_split_url_to_relative' ) ) {
+/**
+ * Convert a site or local development URL to a root-relative path (e.g. /wp-content/uploads/...)
+ * to prevent domain serialization corruption with tools like Local by Flywheel Live Links.
+ *
+ * @param string $url The image or asset URL.
+ * @return string Root-relative path if matching current site domain or local dev domain, or external URL untouched.
+ */
+function wc_bankgiro_split_url_to_relative( $url ) {
+	$url = trim( (string) $url );
+	if ( '' === $url ) {
+		return '';
+	}
+
+	// Already root-relative (starts with / and not //)
+	if ( 0 === strpos( $url, '/' ) && 0 !== strpos( $url, '//' ) ) {
+		return $url;
+	}
+
+	$home_url = function_exists( 'home_url' ) ? home_url() : '';
+	$site_url = function_exists( 'site_url' ) ? site_url() : '';
+
+	// Direct home/site url prefix strip
+	if ( '' !== $home_url && 0 === strpos( $url, $home_url ) ) {
+		$rel = substr( $url, strlen( $home_url ) );
+		return '' !== $rel ? ( '/' === $rel[0] ? $rel : '/' . $rel ) : '/';
+	}
+	if ( '' !== $site_url && 0 === strpos( $url, $site_url ) ) {
+		$rel = substr( $url, strlen( $site_url ) );
+		return '' !== $rel ? ( '/' === $rel[0] ? $rel : '/' . $rel ) : '/';
+	}
+
+	// Host-based check
+	$parsed_url  = function_exists( 'wp_parse_url' ) ? wp_parse_url( $url ) : parse_url( $url );
+	$parsed_home = ! empty( $home_url ) ? ( function_exists( 'wp_parse_url' ) ? wp_parse_url( $home_url ) : parse_url( $home_url ) ) : array();
+	$parsed_site = ! empty( $site_url ) ? ( function_exists( 'wp_parse_url' ) ? wp_parse_url( $site_url ) : parse_url( $site_url ) ) : array();
+
+	$url_host  = ! empty( $parsed_url['host'] ) ? strtolower( $parsed_url['host'] ) : '';
+	$home_host = ! empty( $parsed_home['host'] ) ? strtolower( $parsed_home['host'] ) : '';
+	$site_host = ! empty( $parsed_site['host'] ) ? strtolower( $parsed_site['host'] ) : '';
+
+	$is_local_dev = false;
+	if ( '' !== $url_host ) {
+		if ( $url_host === $home_host || $url_host === $site_host ) {
+			$is_local_dev = true;
+		} elseif (
+			'localhost' === $url_host ||
+			'127.0.0.1' === $url_host ||
+			preg_match( '/\.(local|loca\.lt|test|example|invalid)$/i', $url_host ) ||
+			( function_exists( 'wp_get_environment_type' ) && 'development' === wp_get_environment_type() )
+		) {
+			$is_local_dev = true;
+		}
+	}
+
+	if ( $is_local_dev && ! empty( $parsed_url['path'] ) ) {
+		$path = '/' . ltrim( $parsed_url['path'], '/' );
+		if ( ! empty( $parsed_url['query'] ) ) {
+			$path .= '?' . $parsed_url['query'];
+		}
+		return $path;
+	}
+
+	// Fallback check for any URL pointing into standard WordPress wp-content directories
+	if ( preg_match( '#^https?://[^/]+(/wp-content/.*)$#i', $url, $matches ) ) {
+		if ( $is_local_dev || empty( $url_host ) || $url_host === $home_host ) {
+			return $matches[1];
+		}
+	}
+
+	return $url;
+}
+}
+
+if ( ! function_exists( 'wc_bankgiro_split_resolve_logo_url' ) ) {
+/**
+ * Resolve a logo path or URL to a fully qualified, valid URL at runtime.
+ * Root-relative paths (e.g. /wp-content/uploads/...) are expanded using home_url().
+ *
+ * @param string $path Path or URL.
+ * @return string Full URL.
+ */
+function wc_bankgiro_split_resolve_logo_url( $path ) {
+	$path = trim( (string) $path );
+	if ( '' === $path ) {
+		return '';
+	}
+
+	// Full absolute URL with protocol or protocol-relative
+	if ( preg_match( '#^(?:https?:)?//#i', $path ) ) {
+		return function_exists( 'esc_url' ) ? esc_url( $path ) : $path;
+	}
+
+	// Root-relative path
+	if ( 0 === strpos( $path, '/' ) ) {
+		return function_exists( 'home_url' ) ? ( function_exists( 'esc_url' ) ? esc_url( home_url( $path ) ) : home_url( $path ) ) : $path;
+	}
+
+	return function_exists( 'home_url' ) ? ( function_exists( 'esc_url' ) ? esc_url( home_url( '/' . $path ) ) : home_url( '/' . $path ) ) : $path;
+}
+}
+
 if ( ! function_exists( 'wc_bankgiro_split_get_gateway_settings' ) ) {
 /**
  * Retrieve the gateway settings with complete defaults and fallback values.
@@ -542,6 +644,26 @@ function wc_bankgiro_split_get_gateway_settings() {
 	$settings = get_option( 'woocommerce_bankgiro_split_settings', array() );
 	if ( ! is_array( $settings ) ) {
 		$settings = array();
+	}
+
+	// Self-healing check: Convert any local full domain logo URLs in saved option to root-relative paths
+	$needs_heal = false;
+	if ( ! empty( $settings['split_logo'] ) ) {
+		$rel_split = wc_bankgiro_split_url_to_relative( $settings['split_logo'] );
+		if ( $rel_split !== $settings['split_logo'] ) {
+			$settings['split_logo'] = $rel_split;
+			$needs_heal             = true;
+		}
+	}
+	if ( ! empty( $settings['delbetalning_logo'] ) ) {
+		$rel_delb = wc_bankgiro_split_url_to_relative( $settings['delbetalning_logo'] );
+		if ( $rel_delb !== $settings['delbetalning_logo'] ) {
+			$settings['delbetalning_logo'] = $rel_delb;
+			$needs_heal                   = true;
+		}
+	}
+	if ( $needs_heal && function_exists( 'is_admin' ) && is_admin() ) {
+		update_option( 'woocommerce_bankgiro_split_settings', $settings );
 	}
 
 	$default_term = __( 'Äganderättsförbehåll: Fönstren/dörrarna förblir säljarens egendom tills full likvid har erhållits.', 'wc-bankgiro-split' );
@@ -572,17 +694,20 @@ function wc_bankgiro_split_get_gateway_settings() {
 		'split_title'             => ! empty( $settings['split_title'] ) ? $settings['split_title'] : __( 'Dela upp betalningen (50/50)', 'wc-bankgiro-split' ),
 		'split_subtitle'          => ! empty( $settings['split_subtitle'] ) ? $settings['split_subtitle'] : __( '50% vid beställning, 50% innan leverans', 'wc-bankgiro-split' ),
 		'split_description'       => isset( $settings['split_description'] ) ? $settings['split_description'] : __( 'Betala 50% i förskott och resterande 50% innan leverans via Bankgiro.', 'wc-bankgiro-split' ),
-		'split_logo'              => ! empty( $settings['split_logo'] ) ? $settings['split_logo'] : '',
+		'split_logo'              => ! empty( $settings['split_logo'] ) ? wc_bankgiro_split_resolve_logo_url( $settings['split_logo'] ) : '',
 		'receiver_name'           => ! empty( $settings['receiver_name'] ) ? $settings['receiver_name'] : 'Din Butik AB',
 		'bankgiro_number'         => ! empty( $settings['bankgiro_number'] ) ? $settings['bankgiro_number'] : '123-4567',
 		'terms_text'              => ! empty( $settings['terms_text'] ) ? $settings['terms_text'] : $default_term,
 		'split_options'           => $split_options,
+		'split_show_delivery_warning'    => isset( $settings['split_show_delivery_warning'] ) ? $settings['split_show_delivery_warning'] : 'yes',
+		'split_delivery_warning_heading' => ! empty( $settings['split_delivery_warning_heading'] ) ? $settings['split_delivery_warning_heading'] : __( 'Viktig information inför din leverans', 'wc-bankgiro-split' ),
+		'split_delivery_warning_text'    => isset( $settings['split_delivery_warning_text'] ) ? $settings['split_delivery_warning_text'] : __( 'Vänligen observera att din order måste vara <strong>till fullo betald</strong> innan avlastning kan ske. Oavsett vilken betalningsplan du har valt kommer lastbilen inte att lasta av dina varor förrän vi har bekräftat att slutbetalningen är oss tillhanda.', 'wc-bankgiro-split' ),
 
 		// Delbetalning Settings
 		'delbetalning_title'         => ! empty( $settings['delbetalning_title'] ) ? $settings['delbetalning_title'] : __( 'Delbetalning', 'wc-bankgiro-split' ),
 		'delbetalning_subtitle'      => ! empty( $settings['delbetalning_subtitle'] ) ? $settings['delbetalning_subtitle'] : __( 'LF Finans / Månadsvis delbetalning', 'wc-bankgiro-split' ),
 		'delbetalning_description'   => isset( $settings['delbetalning_description'] ) ? $settings['delbetalning_description'] : __( 'Välj flexibel delbetalning upp till 36 månader via LF Finans.', 'wc-bankgiro-split' ),
-		'delbetalning_logo'          => ! empty( $settings['delbetalning_logo'] ) ? $settings['delbetalning_logo'] : '',
+		'delbetalning_logo'          => ! empty( $settings['delbetalning_logo'] ) ? wc_bankgiro_split_resolve_logo_url( $settings['delbetalning_logo'] ) : '',
 		'delbetalning_terms_url'     => ! empty( $settings['delbetalning_terms_url'] ) ? $settings['delbetalning_terms_url'] : 'https://www.lansforsakringar.se',
 		'delbetalning_terms_heading' => ! empty( $settings['delbetalning_terms_heading'] ) ? $settings['delbetalning_terms_heading'] : __( 'Villkor', 'wc-bankgiro-split' ),
 		'delbetalning_campaigns'     => $delbetalning_campaigns,
@@ -1002,6 +1127,24 @@ function wc_bankgiro_split_get_payment_box_table_html( $order ) {
 			</tr>
 		</tbody>
 	</table>
+	<?php if ( 'yes' === $gw_settings['split_show_delivery_warning'] ) : ?>
+		<?php
+		$yellow_box_heading = ! empty( $gw_settings['split_delivery_warning_heading'] )
+			? $gw_settings['split_delivery_warning_heading']
+			: __( 'Viktig information inför din leverans', 'wc-bankgiro-split' );
+		$yellow_box_text    = ! empty( $gw_settings['split_delivery_warning_text'] )
+			? $gw_settings['split_delivery_warning_text']
+			: __( 'Vänligen observera att din order måste vara <strong>till fullo betald</strong> innan avlastning kan ske. Oavsett vilken betalningsplan du har valt kommer lastbilen inte att lasta av dina varor förrän vi har bekräftat att slutbetalningen är oss tillhanda.', 'wc-bankgiro-split' );
+		?>
+		<div style="background-color: #fefce8; border-left: 4px solid #f59e0b; padding: 18px 20px; margin-top: 20px; border-radius: 0 4px 4px 0; font-family: inherit;">
+			<h4 style="margin: 0 0 8px 0; color: #b45309; font-size: 15px; font-weight: 700;">
+				<?php echo esc_html( $yellow_box_heading ); ?>
+			</h4>
+			<div style="margin: 0; color: #1e293b; font-size: 14px; line-height: 1.5;">
+				<?php echo wp_kses_post( wpautop( $yellow_box_text ) ); ?>
+			</div>
+		</div>
+	<?php endif; ?>
 	<?php
 	return ob_get_clean();
 }
@@ -1077,6 +1220,16 @@ function fg_display_partial_payment_email_box( $order, $sent_to_admin = false, $
 				) . "\n";
 			}
 			echo esc_html( $gw_settings['terms_text'] ) . "\n";
+			if ( 'yes' === $gw_settings['split_show_delivery_warning'] ) {
+				$yellow_heading = ! empty( $gw_settings['split_delivery_warning_heading'] )
+					? $gw_settings['split_delivery_warning_heading']
+					: __( 'Viktig information inför din leverans', 'wc-bankgiro-split' );
+				$yellow_text    = ! empty( $gw_settings['split_delivery_warning_text'] )
+					? $gw_settings['split_delivery_warning_text']
+					: '';
+				echo "\n" . strtoupper( $yellow_heading ) . "\n";
+				echo wp_strip_all_tags( $yellow_text ) . "\n";
+			}
 		}
 		echo "==================================================\n\n";
 		return;
@@ -1818,9 +1971,8 @@ function wc_bankgiro_split_init_gateway_class() {
 				'description' => array(
 					'title'       => __( 'Beskrivning', 'wc-bankgiro-split' ),
 					'type'        => 'textarea',
-					'description' => __( 'Introduktionstext som visas när betalningsmetoden väljs i kassan.', 'wc-bankgiro-split' ),
+					'description' => __( 'Introduktionstext som visas när betalningsmetoden väljs i kassan. Grundläggande HTML-formatering som &lt;strong&gt;, &lt;br&gt;, &lt;ul&gt;, &lt;li&gt;, &lt;a&gt; stöds.', 'wc-bankgiro-split' ),
 					'default'     => __( 'Betala säkert via delbetalning eller manuell banköverföring.', 'wc-bankgiro-split' ),
-					'desc_tip'    => true,
 				),
 				'minimum_amount' => array(
 					'title'             => __( 'Minsta ordervärde (SEK)', 'wc-bankgiro-split' ),
@@ -1878,6 +2030,23 @@ function wc_bankgiro_split_init_gateway_class() {
 					'type'        => 'textarea',
 					'default'     => __( 'Äganderättsförbehåll: Fönstren/dörrarna förblir säljarens egendom tills full likvid har erhållits.', 'wc-bankgiro-split' ),
 				),
+				'split_show_delivery_warning' => array(
+					'title'   => __( 'Leveransinformation', 'wc-bankgiro-split' ),
+					'type'    => 'checkbox',
+					'label'   => __( 'Visa gul informationsruta inför leverans i e-post/tacksida', 'wc-bankgiro-split' ),
+					'default' => 'yes',
+				),
+				'split_delivery_warning_heading' => array(
+					'title'       => __( 'Rubrik för gul informationsruta', 'wc-bankgiro-split' ),
+					'type'        => 'text',
+					'default'     => __( 'Viktig information inför din leverans', 'wc-bankgiro-split' ),
+				),
+				'split_delivery_warning_text' => array(
+					'title'       => __( 'Text i gul informationsruta', 'wc-bankgiro-split' ),
+					'type'        => 'textarea',
+					'default'     => __( 'Vänligen observera att din order måste vara <strong>till fullo betald</strong> innan avlastning kan ske. Oavsett vilken betalningsplan du har valt kommer lastbilen inte att lasta av dina varor förrän vi har bekräftat att slutbetalningen är oss tillhanda.', 'wc-bankgiro-split' ),
+					'description' => __( 'Visas i en gul varningsruta i orderbekräftelsemejl och på tacksidan när kunden har valt Split (50/50). Grundläggande HTML stöds.', 'wc-bankgiro-split' ),
+				),
 
 				// Delbetalning Specific Settings
 				'delbetalning_title' => array(
@@ -1912,9 +2081,23 @@ function wc_bankgiro_split_init_gateway_class() {
 		}
 
 		/**
+		 * Resolve relative or stored logo paths to a fully qualified URL.
+		 *
+		 * @param string $path Logo path or URL.
+		 * @return string Fully qualified URL.
+		 */
+		public function get_logo_url( $path ) {
+			return wc_bankgiro_split_resolve_logo_url( $path );
+		}
+
+		/**
 		 * Custom processor for saving repeater JSON fields, logo URLs, and Övrig information.
 		 */
 		public function process_admin_options() {
+			if ( function_exists( 'current_user_can' ) && ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'manage_options' ) ) {
+				return false;
+			}
+
 			parent::process_admin_options();
 
 			$settings = get_option( $this->get_option_key(), array() );
@@ -1958,12 +2141,12 @@ function wc_bankgiro_split_init_gateway_class() {
 				}
 			}
 
-			// 3. Save Logos
+			// 3. Save Logos (stored as root-relative paths to prevent Local Flywheel Live Link unserialize corruption)
 			if ( isset( $_POST['wc_bg_split_logo'] ) ) {
-				$settings['split_logo'] = esc_url_raw( wp_unslash( $_POST['wc_bg_split_logo'] ) );
+				$settings['split_logo'] = wc_bankgiro_split_url_to_relative( esc_url_raw( wp_unslash( $_POST['wc_bg_split_logo'] ) ) );
 			}
 			if ( isset( $_POST['wc_bg_delbetalning_logo'] ) ) {
-				$settings['delbetalning_logo'] = esc_url_raw( wp_unslash( $_POST['wc_bg_delbetalning_logo'] ) );
+				$settings['delbetalning_logo'] = wc_bankgiro_split_url_to_relative( esc_url_raw( wp_unslash( $_POST['wc_bg_delbetalning_logo'] ) ) );
 			}
 
 			// 4. Save Övrig information
@@ -1973,6 +2156,9 @@ function wc_bankgiro_split_init_gateway_class() {
 
 			// 5. Save HTML Descriptions with wp_kses_post
 			$post_prefix = 'woocommerce_' . $this->id . '_';
+			if ( isset( $_POST[ $post_prefix . 'description' ] ) ) {
+				$settings['description'] = wp_kses_post( wp_unslash( $_POST[ $post_prefix . 'description' ] ) );
+			}
 			if ( isset( $_POST[ $post_prefix . 'split_description' ] ) ) {
 				$settings['split_description'] = wp_kses_post( wp_unslash( $_POST[ $post_prefix . 'split_description' ] ) );
 			}
@@ -1980,7 +2166,46 @@ function wc_bankgiro_split_init_gateway_class() {
 				$settings['delbetalning_description'] = wp_kses_post( wp_unslash( $_POST[ $post_prefix . 'delbetalning_description' ] ) );
 			}
 
+			// 6. Save Split delivery warning settings
+			$settings['split_show_delivery_warning'] = isset( $_POST[ $post_prefix . 'split_show_delivery_warning' ] ) ? 'yes' : 'no';
+			if ( isset( $_POST[ $post_prefix . 'split_delivery_warning_heading' ] ) ) {
+				$settings['split_delivery_warning_heading'] = sanitize_text_field( wp_unslash( $_POST[ $post_prefix . 'split_delivery_warning_heading' ] ) );
+			}
+			if ( isset( $_POST[ $post_prefix . 'split_delivery_warning_text' ] ) ) {
+				$settings['split_delivery_warning_text'] = wp_kses_post( wp_unslash( $_POST[ $post_prefix . 'split_delivery_warning_text' ] ) );
+			}
+
+			// Clean self-healing check: ensure logo paths are stored relative before saving
+			if ( ! empty( $settings['split_logo'] ) ) {
+				$settings['split_logo'] = wc_bankgiro_split_url_to_relative( $settings['split_logo'] );
+			}
+			if ( ! empty( $settings['delbetalning_logo'] ) ) {
+				$settings['delbetalning_logo'] = wc_bankgiro_split_url_to_relative( $settings['delbetalning_logo'] );
+			}
+
 			update_option( $this->get_option_key(), $settings );
+		}
+
+		/**
+		 * Validate and sanitize main description allowing safe HTML tags.
+		 *
+		 * @param string $key   Field key.
+		 * @param string $value Field value.
+		 * @return string Sanitized HTML.
+		 */
+		public function validate_description_field( $key, $value ) {
+			return wp_kses_post( trim( wp_unslash( $value ) ) );
+		}
+
+		/**
+		 * Validate and sanitize split_delivery_warning_text allowing safe HTML tags.
+		 *
+		 * @param string $key   Field key.
+		 * @param string $value Field value.
+		 * @return string Sanitized HTML.
+		 */
+		public function validate_split_delivery_warning_text_field( $key, $value ) {
+			return wp_kses_post( trim( wp_unslash( $value ) ) );
 		}
 
 		/**
@@ -2011,7 +2236,7 @@ function wc_bankgiro_split_init_gateway_class() {
 		public function admin_options() {
 			$gw_settings = wc_bankgiro_split_get_gateway_settings();
 			?>
-			<div class="wc-bg-admin-wrap">
+			<div class="wc-bg-admin-wrap" data-active-tab="all">
 				<!-- Header Banner -->
 				<div class="wc-bg-admin-header">
 					<div>
@@ -2064,12 +2289,15 @@ function wc_bankgiro_split_init_gateway_class() {
 						<?php
 						$this->generate_settings_html(
 							array(
-								'split_title'       => $this->form_fields['split_title'],
-								'split_subtitle'    => $this->form_fields['split_subtitle'],
-								'split_description' => $this->form_fields['split_description'],
-								'bankgiro_number'   => $this->form_fields['bankgiro_number'],
-								'receiver_name'     => $this->form_fields['receiver_name'],
-								'terms_text'        => $this->form_fields['terms_text'],
+								'split_title'                    => $this->form_fields['split_title'],
+								'split_subtitle'                 => $this->form_fields['split_subtitle'],
+								'split_description'              => $this->form_fields['split_description'],
+								'bankgiro_number'                => $this->form_fields['bankgiro_number'],
+								'receiver_name'                  => $this->form_fields['receiver_name'],
+								'terms_text'                     => $this->form_fields['terms_text'],
+								'split_show_delivery_warning'    => $this->form_fields['split_show_delivery_warning'],
+								'split_delivery_warning_heading' => $this->form_fields['split_delivery_warning_heading'],
+								'split_delivery_warning_text'    => $this->form_fields['split_delivery_warning_text'],
 							)
 						);
 						?>
@@ -2081,13 +2309,13 @@ function wc_bankgiro_split_init_gateway_class() {
 							<td class="forminp">
 								<div class="wc-bg-logo-uploader">
 									<div class="wc-bg-logo-input-row">
-										<input type="text" name="wc_bg_split_logo" class="wc-bg-logo-url-input regular-text" value="<?php echo esc_attr( $gw_settings['split_logo'] ); ?>" placeholder="https://..." />
+										<input type="text" name="wc_bg_split_logo" class="wc-bg-logo-url-input regular-text" value="<?php echo esc_attr( $this->get_logo_url( $gw_settings['split_logo'] ) ); ?>" placeholder="https://..." />
 										<button type="button" class="button wc-bg-upload-logo-btn"><?php echo esc_html__( 'Välj bild...', 'wc-bankgiro-split' ); ?></button>
 										<button type="button" class="button wc-bg-remove-logo-btn"><?php echo esc_html__( 'Rensa', 'wc-bankgiro-split' ); ?></button>
 									</div>
 									<div class="wc-bg-logo-preview-box">
 										<?php if ( ! empty( $gw_settings['split_logo'] ) ) : ?>
-											<img src="<?php echo esc_url( $gw_settings['split_logo'] ); ?>" alt="Split Logo" />
+											<img src="<?php echo esc_url( $this->get_logo_url( $gw_settings['split_logo'] ) ); ?>" alt="Split Logo" />
 										<?php else : ?>
 											<span class="wc-bg-logo-preview-empty"><?php echo esc_html__( 'Ingen logotyp vald (standardikon visas i kassan)', 'wc-bankgiro-split' ); ?></span>
 										<?php endif; ?>
@@ -2171,13 +2399,13 @@ function wc_bankgiro_split_init_gateway_class() {
 							<td class="forminp">
 								<div class="wc-bg-logo-uploader">
 									<div class="wc-bg-logo-input-row">
-										<input type="text" name="wc_bg_delbetalning_logo" class="wc-bg-logo-url-input regular-text" value="<?php echo esc_attr( $gw_settings['delbetalning_logo'] ); ?>" placeholder="https://..." />
+										<input type="text" name="wc_bg_delbetalning_logo" class="wc-bg-logo-url-input regular-text" value="<?php echo esc_attr( $this->get_logo_url( $gw_settings['delbetalning_logo'] ) ); ?>" placeholder="https://..." />
 										<button type="button" class="button wc-bg-upload-logo-btn"><?php echo esc_html__( 'Välj bild...', 'wc-bankgiro-split' ); ?></button>
 										<button type="button" class="button wc-bg-remove-logo-btn"><?php echo esc_html__( 'Rensa', 'wc-bankgiro-split' ); ?></button>
 									</div>
 									<div class="wc-bg-logo-preview-box">
 										<?php if ( ! empty( $gw_settings['delbetalning_logo'] ) ) : ?>
-											<img src="<?php echo esc_url( $gw_settings['delbetalning_logo'] ); ?>" alt="Delbetalning Logo" />
+											<img src="<?php echo esc_url( $this->get_logo_url( $gw_settings['delbetalning_logo'] ) ); ?>" alt="Delbetalning Logo" />
 										<?php else : ?>
 											<span class="wc-bg-logo-preview-empty"><?php echo esc_html__( 'Ingen logotyp vald (standardikon visas i kassan)', 'wc-bankgiro-split' ); ?></span>
 										<?php endif; ?>
@@ -2255,7 +2483,7 @@ function wc_bankgiro_split_init_gateway_class() {
 				</div>
 
 				<!-- Section 4: Bruksanvisning & Guide (User Guide for Store Owner) -->
-				<div class="wc-bg-admin-section" data-section="guide">
+				<div class="wc-bg-admin-section is-hidden" data-section="guide">
 					<div class="wc-bg-admin-section-header">
 						<h3><?php echo esc_html__( '📖 Bruksanvisning & Handbok för butiksägaren', 'wc-bankgiro-split' ); ?></h3>
 						<p><?php echo esc_html__( 'En komplett svensk guide till hur tillägget fungerar, vilka inställningar som styr vad i kassan och hur bekräftelsemejl kopplas.', 'wc-bankgiro-split' ); ?></p>
@@ -2420,7 +2648,7 @@ function wc_bankgiro_split_init_gateway_class() {
 			$default_mode = ( 'yes' === $gw_settings['enable_split'] ) ? 'split' : 'delbetalning';
 
 			if ( ! empty( $this->description ) ) {
-				echo '<p class="wc-bg-gateway-intro">' . esc_html( $this->description ) . '</p>';
+				echo '<div class="wc-bg-gateway-intro">' . wp_kses_post( wpautop( $this->description ) ) . '</div>';
 			}
 			?>
 			<fieldset id="wc-<?php echo esc_attr( $this->id ); ?>-form" class="wc-payment-form wc-bg-dual-checkout-wrap" style="background:transparent; padding:0; margin:0;">
@@ -2442,7 +2670,7 @@ function wc_bankgiro_split_init_gateway_class() {
 							<div class="wc-bg-mode-logo-row">
 								<div class="wc-bg-mode-logo">
 									<?php if ( ! empty( $gw_settings['split_logo'] ) ) : ?>
-										<img src="<?php echo esc_url( $gw_settings['split_logo'] ); ?>" alt="Split" />
+										<img src="<?php echo esc_url( $this->get_logo_url( $gw_settings['split_logo'] ) ); ?>" alt="Split" />
 									<?php else : ?>
 										<span class="wc-bg-mode-logo-fallback">½</span>
 									<?php endif; ?>
@@ -2463,7 +2691,7 @@ function wc_bankgiro_split_init_gateway_class() {
 							<div class="wc-bg-mode-logo-row">
 								<div class="wc-bg-mode-logo">
 									<?php if ( ! empty( $gw_settings['delbetalning_logo'] ) ) : ?>
-										<img src="<?php echo esc_url( $gw_settings['delbetalning_logo'] ); ?>" alt="LF Finans" />
+										<img src="<?php echo esc_url( $this->get_logo_url( $gw_settings['delbetalning_logo'] ) ); ?>" alt="LF Finans" />
 									<?php else : ?>
 										<span class="wc-bg-mode-logo-fallback">LF</span>
 									<?php endif; ?>
@@ -2554,11 +2782,11 @@ function wc_bankgiro_split_init_gateway_class() {
 											data-max-amount="<?php echo esc_attr( $camp['max_amount'] ); ?>"
 											class="<?php echo ( 0 === $idx ) ? 'is-selected-row' : ''; ?>">
 											<td class="wc-bg-radio-cell"><span class="wc-bg-table-radio-circle"></span></td>
-											<td><?php echo esc_html( $camp['campaign_name'] ); ?></td>
-											<td><?php echo esc_html( $camp['interest_rate'] ); ?></td>
-											<td><?php echo esc_html( $camp['setup_fee'] ); ?></td>
-											<td><?php echo esc_html( $camp['monthly_fee'] ); ?></td>
-											<td><?php echo esc_html( $camp['max_amount'] ); ?></td>
+											<td class="wc-bg-camp-name-cell" data-label="<?php esc_attr_e( 'Kampanj', 'wc-bankgiro-split' ); ?>"><?php echo esc_html( $camp['campaign_name'] ); ?></td>
+											<td class="wc-bg-camp-rate-cell" data-label="<?php esc_attr_e( 'Ränta: ', 'wc-bankgiro-split' ); ?>"><?php echo esc_html( $camp['interest_rate'] ); ?></td>
+											<td class="wc-bg-camp-setup-cell" data-label="<?php esc_attr_e( 'Uppl.: ', 'wc-bankgiro-split' ); ?>"><?php echo esc_html( $camp['setup_fee'] ); ?></td>
+											<td class="wc-bg-camp-fee-cell" data-label="<?php esc_attr_e( 'Avi: ', 'wc-bankgiro-split' ); ?>"><?php echo esc_html( $camp['monthly_fee'] ); ?></td>
+											<td class="wc-bg-camp-max-cell" data-label="<?php esc_attr_e( 'Max: ', 'wc-bankgiro-split' ); ?>"><?php echo esc_html( $camp['max_amount'] ); ?></td>
 										</tr>
 									<?php endforeach; ?>
 								</tbody>
@@ -2572,7 +2800,13 @@ function wc_bankgiro_split_init_gateway_class() {
 						<!-- Övrig information terms box -->
 						<?php if ( ! empty( $gw_settings['delbetalning_ovrig_info'] ) ) : ?>
 							<div class="wc-bg-terms-wrapper">
-								<h4 class="wc-bg-terms-heading"><?php echo esc_html( $gw_settings['delbetalning_terms_heading'] ); ?></h4>
+								<div class="wc-bg-terms-toggle" role="button" tabindex="0" aria-expanded="false">
+									<h4 class="wc-bg-terms-heading"><?php echo esc_html( $gw_settings['delbetalning_terms_heading'] ); ?></h4>
+									<span class="wc-bg-terms-toggle-action">
+										<span class="wc-bg-terms-toggle-text"><?php echo esc_html__( 'Visa villkor', 'wc-bankgiro-split' ); ?></span>
+										<span class="wc-bg-terms-toggle-icon" aria-hidden="true">▼</span>
+									</span>
+								</div>
 								<div class="wc-bg-other-info-box">
 									<?php echo wp_kses_post( $gw_settings['delbetalning_ovrig_info'] ); ?>
 								</div>
@@ -2592,6 +2826,13 @@ function wc_bankgiro_split_init_gateway_class() {
 		 * @return bool
 		 */
 		public function validate_fields() {
+			if ( isset( $_POST['wc_bankgiro_split_nonce'] ) && function_exists( 'wp_verify_nonce' ) ) {
+				if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['wc_bankgiro_split_nonce'] ) ), 'wc_bankgiro_split_checkout' ) ) {
+					wc_add_notice( __( 'Säkerhetskontrollen misslyckades. Vänligen ladda om sidan och försök igen.', 'wc-bankgiro-split' ), 'error' );
+					return false;
+				}
+			}
+
 			$ssn  = isset( $_POST['bg_ssn_orgnr'] ) ? sanitize_text_field( wp_unslash( $_POST['bg_ssn_orgnr'] ) ) : '';
 			$mode = isset( $_POST['bg_payment_mode'] ) ? sanitize_key( wp_unslash( $_POST['bg_payment_mode'] ) ) : 'split';
 

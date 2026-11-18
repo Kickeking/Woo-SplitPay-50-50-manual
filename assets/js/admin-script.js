@@ -7,20 +7,38 @@
 	'use strict';
 
 	$(function () {
-		// 1. Tab Switching
-		$(document).on('click', '.wc-bg-admin-tab-btn', function (e) {
-			e.preventDefault();
-			var target = $(this).data('target');
+		// 1. Tab Switching: Guide must strictly show ONLY on its own tab
+		function switchAdminTab(target) {
+			var $wrap = $('.wc-bg-admin-wrap');
+			$wrap.attr('data-active-tab', target);
+
 			$('.wc-bg-admin-tab-btn').removeClass('is-active');
-			$(this).addClass('is-active');
+			$('.wc-bg-admin-tab-btn[data-target="' + target + '"]').addClass('is-active');
 
 			if (target === 'all') {
-				$('.wc-bg-admin-section').removeClass('is-hidden');
+				// Show settings sections 1, 2, and 3 - NEVER the guide
+				$('.wc-bg-admin-section[data-section="general"], .wc-bg-admin-section[data-section="split"], .wc-bg-admin-section[data-section="delbetalning"]').removeClass('is-hidden');
+				$('.wc-bg-admin-section[data-section="guide"]').addClass('is-hidden');
+			} else if (target === 'guide') {
+				// Show ONLY the guide
+				$('.wc-bg-admin-section').addClass('is-hidden');
+				$('.wc-bg-admin-section[data-section="guide"]').removeClass('is-hidden');
 			} else {
+				// Show only the specific section (general, split, or delbetalning) - NEVER the guide
 				$('.wc-bg-admin-section').addClass('is-hidden');
 				$('.wc-bg-admin-section[data-section="' + target + '"]').removeClass('is-hidden');
 			}
+		}
+
+		$(document).on('click', '.wc-bg-admin-tab-btn', function (e) {
+			e.preventDefault();
+			var target = $(this).data('target');
+			switchAdminTab(target);
 		});
+
+		// Ensure initial active tab state is synced on page load
+		var initialTarget = $('.wc-bg-admin-tab-btn.is-active').data('target') || 'all';
+		switchAdminTab(initialTarget);
 
 		// 2. WP Media Library Uploader for Split & Delbetalning Logos
 		$(document).on('click', '.wc-bg-upload-logo-btn', function (e) {
